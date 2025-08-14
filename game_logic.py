@@ -28,7 +28,7 @@ class GameLogic:
     def execute_move(self, player, piece_idx, steps):
         # process the move
         if not self.validate_move(player, piece_idx, steps):
-            raise ValueError("Invalid move attempted")
+            raise ValueError("Illegal move attempted - invalid finish or blocked home")
 
         current_pos = self.state.get_piece_pos(player, piece_idx)
         #starting form home

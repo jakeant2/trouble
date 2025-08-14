@@ -1,22 +1,23 @@
 import random
-from player import human_player, ai_player
-
+from player import Human
+from agents import RandomAI, RuleBasedAI
 from game_logic import GameLogic
 from board import Board
-from state import game_state
+from state import GameState
 
 class GameController:
     def __init__(self):
         self.board = Board() #visualization & validation of path
         self.state = GameState() #track positions
         self.logic = GameLogic(self.board, self.state) # rules
-        self.players = [human_player(), ai_player()] # may need to change
+        self.players = self._init_players() # may need to change
 
     def _init_players(self):
         # initialize players with types
         return [
-            Player(is_human = True, color = "RED"),
-            Player(is_human = False, color = "BLUE")
+            Human(color = "RED"),
+            RuleBasedAI(color = "BLUE")
+            # or RandomAI(color = "BLUE")
         ]
 
     def run(self):
@@ -27,14 +28,14 @@ class GameController:
             self._display_turn_start(current_player, roll) #internal help
             move_valid = False # create loop to force a valid move to be chosen
             while not move_valid:
-                piece_idx = current_player.select_piece() # human or AI decision
+                piece_idx = current_player.choose_move(self.state, roll) # human or AI decision
                 move_valid = self.logic.validate_move(
                     player = current_player.color,
                     piece_idx = piece_idx,
                     steps = roll
                 )
 
-            self.logic.execute_move(current_player, piece_idx, roll)
+            self.logic.execute_move(current_player.color, piece_idx, roll)
             self.players.append(current_player)
             self._check_winner()
 

@@ -1,50 +1,70 @@
-import random
-
-class GameController:
-    def __init__(self, players=2):
-        self.players = players
-        self.board = {player: [0, 0, 0, 0] for player in range(players)}  # Each player has 4 tokens at start
-        self.home = {player: 0 for player in range(players)}  # Track tokens that reached "home"
-
-    def roll_dice(self):
-        return random.randint(1, 6)
-
-    def move_token(self, player, token_index, roll):
-        if self.board[player][token_index] == 0 and roll == 6:  # Token can only leave start with a 6
-            self.board[player][token_index] = 1
-        elif self.board[player][token_index] > 0:  # Move token forward
-            self.board[player][token_index] += roll
-            if self.board[player][token_index] > 28:  # Assuming 28 spaces to "home"
-                self.board[player][token_index] = 28
-                self.home[player] += 1
-
-    def check_collision(self, player, token_index):
-        position = self.board[player][token_index]
-        for opponent in self.board:
-            if opponent != player:
-                for i, pos in enumerate(self.board[opponent]):
-                    if pos == position and position != 0:  # Collision detected
-                        self.board[opponent][i] = 0  # Send opponent's token back to start
+class GameLogic:
+    def __init__(self, board, state):
+        self.board = board
+        self.state = state
 
 
-    def play_turn(self, player):
-        roll = self.roll_dice()
-        for i, token in enumerate(self.board[player]):
-            if token < 28:  # Only move tokens not already home
-                self.move_token(player, i, roll)
-                self.check_collision(player, i)
-                break  # Move one token per turn
-        if roll == 6:  # Roll again if a 6 is rolled
-            self.play_turn(player)
+    def validate_move(self, player, piece_idx, steps):
+        # check if move is legal - t/f
+        current_pos = self.state.get_piece_pos(player, piece_idx)
+        #rule 1 - starting from home requires a 6
+        if current_pos == -1:
+            return steps == 6 # can only leave if 6
 
-    def is_winner(self, player):
-        return self.home[player] == 4  # All 4 tokens must be home to win, change this if we don't use all 4
+        # rule 2 - cannot enter opponents home
+        if not self.board.is_valid_move(player, current_pos, steps):
+            return False
 
-    def play_game(self):
-        turn = 0
-        while True:
-            current_player = turn % self.players
-            self.play_turn(current_player)
-            if self.is_winner(current_player):
-                break
-            turn += 1
+        # rule 3 must land exactly in finish
+        new_pos = (current_pos + steps) % self.board.size
+        if player == "RED" and new_pos in self.state.red_finish:
+            return (current_pos + steps) == (28 + piece_idx)
+        elif player == "BLUE" and new_pos in self.state.blue_finish:
+            return (current_pos + steps - 16) % 32 == (12 + piece_idx)
+
+        return True
+
+
+    def execute_move(self, player, piece_idx, steps):
+        # process the move
+        if not self.validate_move(player, piece_idx, steps):
+            raise ValueError("Invalid move attempted")
+
+        current_pos = self.state.get_piece_pos(player, piece_idx)
+        #starting form home
+        if current_pos == -1:
+            self._move_from_home(player, piece_idx)
+            return
+
+        #standard movement
+        new_pos = (current_pos + steps) % self.board.size
+
+        #to handle trouble - landing on opponent
+        if (player == "RED" and new_pos not in self.state.red_finish) or \
+        (player == "BLUE" and new_pos not in self.state.blue_finish):
+            self._handle_captures(player, new_pos)
+
+        #update position
+        self.state.update_piece_pos(player, piece_idx, new_pos)
+
+    def _move_from_home(self, player, piece_idx):
+        # move piece from starting position
+        # determine which home positions to use based on the color
+        home_pos = self.board.red_home_postions if player == "RED" else self.board.blue_home_postions
+        #get specific start position for each piece
+        start_pos = home_pos[piece_idx]
+        # start position empty
+        if self.state.board[start_pos] is None:
+            self.state.board[start_pos] = f"{player[0]}{piece_idx+1}"
+            self.state.set_piece_pos(player, piece_idx, start_pos)
+
+    def _handle_captures(self, player, new_pos):
+        # send opponent home if you land on their piece
+        #identify color
+        opponent = "BLUE" if player == "RED" else "RED"
+        #check if new position has an opponent's piece
+        if self.state.board[new_pos] and self.state.board[new_pos].startswith(opponent[0]):
+            #extract opponents piece index
+            opponent_piece = int(self.state.board[new_pos][1]) - 1
+            self.state.send_piece_home(opponent, opponent_piece)
+

@@ -17,7 +17,7 @@ class RuleBasedAI(Player):
     SAFE_SPACE_SCORE = 10
     def choose_move(self, game_state, roll):
         # select optimal move based on rules
-        movable_pieces = self._get_movable_pieces(game_state, roll)
+        movable_pieces = self.get_movable_pieces(game_state, roll)
         if not movable_pieces:
             return None
 
@@ -54,24 +54,18 @@ class RuleBasedAI(Player):
             score += self.CAPTURE_SCORE # high reward, not as high as 100
 
         #priority 3 - moving towards home
-        if self.color == "RED":
-            score += new_pos #score increases as you get closer to finish, will be below 50 because board is smaller than that
+        score += new_pos if self.color == "RED" else (new_pos - 16) % 32
 
-        else:
-            score += (new_pos - 16) % 32 #wrrapping around for blue
-
-        #last prioriryt - avoid leaving pieces vulnerable for attack
-        opponent_home = game_state.blue_home if self.color == "RED" else game_state.red_home
-        if new_pos not in opponent_home:
-            score  += self.SAFE_SPACE_SCORE
+        # Safer space bonus only if not vulnerable
+        if not game_state.is_vulnerable(self.color, new_pos):
+            score += self.SAFE_SPACE_SCORE
 
         return score
 
-    def _get_movable_pieces(self, game_state, roll):
+    """def _get_movable_pieces(self, game_state, roll):
         #return positions of pieces that can move this turn
         pieces = game_state.red_pieces if self.color == "RED" else game_state.blue_pieces
-        movable = []
-        for i, pos in enumerate(pieces):
-            if (pos == -1 and roll == 6) or (0 <= pos < 28):
-                movable.append(i)
-        return movable
+        #movable = []
+        return [i for i, pos in enumerate(pieces)
+            if (pos == -1 and roll == 6) or (0 <= pos < 28)]
+"""

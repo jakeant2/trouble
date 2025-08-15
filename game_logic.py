@@ -1,70 +1,107 @@
+import random
+
 class GameLogic:
     def __init__(self, board, state):
         self.board = board
         self.state = state
 
+    def roll_dice(self):
+        return random.randint(1, 6)
 
-    def validate_move(self, player, piece_idx, steps):
-        # check if move is legal - t/f
-        current_pos = self.state.get_piece_pos(player, piece_idx)
-        #rule 1 - starting from home requires a 6
+    def execute_move(self, player_color, piece_idx, steps, finish_positions, home_positions):
+        piece_id = f"{player_color[0]}{piece_idx+1}"
+        current_pos = self.state.get_piece_pos(player_color, piece_idx)
+        board = self.state.board
+        # move from home
         if current_pos == -1:
-            return steps == 6 # can only leave if 6
+            if steps == 6:
+                start_pos = 0 if player_color == "RED" else 16
+                self.state.update_piece_pos(piece_id, start_pos, self.state.board, finish_positions, home_positions)
+                print(f"{player_color} moved piece {piece_idx+1} from home.")
+                return True
+            else:
+                print(f"{player_color} cannot move piece {piece_idx+1} from home without a 6.")
+                return False
+        #standard move skipping opponent finish
+        pos = current_pos
+        opponent_home = self.state.blue_home if player_color == "RED" else self.state.red_home
+        for _ in range(steps):
+            pos = (pos + 1) % self.board.size
+            #skip opponent finish
+            if pos in (self.state.blue_finish if player_color == "RED" else self.state.red_finish) or pos in opponent_home:
+                pos = (pos + 1) % self.board.size
 
-        # rule 2 - cannot enter opponents home
-        if not self.board.is_valid_move(player, current_pos, steps):
-            return False
+        #moving to finish
+        #finish_zone = finish_positions[player_color[0]]
+        if pos in (finish_positions[player_color[0]]):
+            occupying_piece = board[pos]
+            if occupying_piece and occupying_piece.startswith(player_color[0]):  # BLOCK ONLY SAME COLOR
+                print(f"{player_color} cannot move piece {piece_idx+1} to finish; slot already occupied by {occupying_piece}")
+                return False
+        # handling capture
+        target_val = board[pos]
+        if target_val and target_val.startswith("R" if player_color == "BLUE" else "B"):
+            print(f"{player_color} captured {target_val}!")
+            self.state.send_piece_home(target_val, board, home_positions)
+            #else:
+                # ValueError(f"Invalid move: landing on own piece at {pos}")
+        # update position
+        self.state.update_piece_pos(piece_id, pos, board, finish_positions, home_positions)
+        print(f"{player_color} moved piece {piece_idx+1} to {pos}")
 
-        # rule 3 must land exactly in finish
-        new_pos = (current_pos + steps) % self.board.size
-        if player == "RED" and new_pos in self.state.red_finish:
-            return (current_pos + steps) == (28 + piece_idx)
-        elif player == "BLUE" and new_pos in self.state.blue_finish:
-            return (current_pos + steps - 16) % 32 == (12 + piece_idx)
+        return steps == 6
 
-        return True
-
-
-    def execute_move(self, player, piece_idx, steps):
-        # process the move
-        if not self.validate_move(player, piece_idx, steps):
-            raise ValueError("Illegal move attempted - invalid finish or blocked home")
-
-        current_pos = self.state.get_piece_pos(player, piece_idx)
-        #starting form home
-        if current_pos == -1:
-            self._move_from_home(player, piece_idx)
-            return
-
-        #standard movement
-        new_pos = (current_pos + steps) % self.board.size
-
-        #to handle trouble - landing on opponent
-        if (player == "RED" and new_pos not in self.state.red_finish) or \
-        (player == "BLUE" and new_pos not in self.state.blue_finish):
-            self._handle_captures(player, new_pos)
-
-        #update position
-        self.state.update_piece_pos(player, piece_idx, new_pos)
-
-    def _move_from_home(self, player, piece_idx):
+    """def _move_from_home(self, player, piece_idx):
         # move piece from starting position
         # determine which home positions to use based on the color
-        home_pos = self.board.red_home_postions if player == "RED" else self.board.blue_home_postions
+        #home_pos = self.board.red_home_positions if player == "RED" else self.board.blue_home_positions
         #get specific start position for each piece
-        start_pos = home_pos[piece_idx]
+        start_pos = 0 if player == "RED" else 16
+        self.state.update_piece_pos(player, piece_idx, start_pos)
+        #self.state.board[start_pos] = f"{player[0]}{piece_idx+1}"  # EDIT: set board
+        print(f"{player} moved piece {piece_idx+1} from home.")
         # start position empty
-        if self.state.board[start_pos] is None:
-            self.state.board[start_pos] = f"{player[0]}{piece_idx+1}"
-            self.state.set_piece_pos(player, piece_idx, start_pos)
+
+    def move_piece(self, player, piece_idx, steps):
+        pieces = self.state.red_pieces if player == "RED" else self.state.blue_pieces
+        finish = self.state.red_finish if player == "RED" else self.state.blue_finish
+
+        current_pos = pieces[piece_idx]
+        if current_pos == -1:
+            if steps == 6:
+                start_pos = 0 if player == "RED" else 16
+                pieces[piece_idx] = start_pos
+                self.state.board[start_pos] = f"{player[0]}{piece_idx+1}"
+                return True
+            return False
+        #dont overwrite in finish
+        new_pos = (current_pos + steps) % self.board.size
+        if new_pos in finish:
+            pieces[piece_idx] = new_pos
+            if not self.state.board[new_pos]:
+                self.state.board[new_pos] = f"{player[0]}{piece_idx+1}"
+            return True
+
+        pieces[piece_idx] = new_pos
+        self.state.board[new_pos] = f"{player[0]}{piece_idx+1}"
+        self.state.board[current_pos] = None
+        return True
 
     def _handle_captures(self, player, new_pos):
         # send opponent home if you land on their piece
         #identify color
         opponent = "BLUE" if player == "RED" else "RED"
-        #check if new position has an opponent's piece
-        if self.state.board[new_pos] and self.state.board[new_pos].startswith(opponent[0]):
-            #extract opponents piece index
-            opponent_piece = int(self.state.board[new_pos][1]) - 1
-            self.state.send_piece_home(opponent, opponent_piece)
+        # dont capture if in finish zone
+        if new_pos in self.state.red_finish or new_pos in self.state.blue_finish:
+            return
 
+        cell = self.state.board[new_pos]
+        #checks if starting r or b
+        if cell and cell.startswith(opponent[0]):
+            # extracting # from piece
+            opponent_piece = int(cell[1]) - 1
+            self.state.send_piece_home(opponent, opponent_piece)"""
+
+    def is_game_over(self):
+        return self.state.check_winner() is not None
+        #return winner is not None
